@@ -1,253 +1,124 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
-Excel工具函数库
-提供Excel文件处理的通用工具函数
+Excel工具公共模块
+包含重复使用的工具函数和类
 """
+import tkinter as tk
+from tkinter import ttk, filedialog, messagebox
 import pandas as pd
-import openpyxl
-from openpyxl import load_workbook
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-from openpyxl.utils import get_column_letter
-import xlwings as xw
-from datetime import datetime
 import os
+import time
+from datetime import datetime
 
 
 class ExcelUtils:
-    """Excel工具类"""
+    """Excel工具公共类"""
     
     @staticmethod
-    def read_excel_with_format(file_path):
-        """
-        读取Excel文件并保留格式
+    def format_sheet_name(date, date_format):
+        """格式化工作表名称 - 通用版本"""
+        format_map = {
+            "YYYY-MM-DD": date.strftime("%Y-%m-%d"),
+            "YYYY/MM/DD": date.strftime("%Y/%m/%d"),
+            "YYYY年MM月DD日": date.strftime("%Y年%m月%d日"),
+            "MM-DD-YYYY": date.strftime("%m-%d-%Y"),
+            "DD/MM/YYYY": date.strftime("%d/%m/%Y")
+        }
+        return format_map.get(date_format, date.strftime("%Y-%m-%d"))
+    
+    @staticmethod
+    def validate_excel_file(file_path):
+        """验证Excel文件是否存在且有效"""
+        if not file_path:
+            return False, "请选择Excel文件"
         
-        Args:
-            file_path: Excel文件路径
+        if not os.path.exists(file_path):
+            return False, "选择的文件不存在"
+        
+        if not file_path.lower().endswith(('.xlsx', '.xls', '.xlsm', '.xlsb')):
+            return False, "请选择有效的Excel文件"
+        
+        return True, "文件验证通过"
+    
+    @staticmethod
+    def get_excel_columns(file_path):
+        """获取Excel文件的列名"""
+        try:
+            df = pd.read_excel(file_path, nrows=0)
+            return list(df.columns)
+        except Exception as e:
+            raise ValueError(f"读取Excel文件列名失败: {str(e)}")
+    
+    @staticmethod
+    def get_save_location(default_name, title="保存文件"):
+        """获取保存位置"""
+        output_path = filedialog.asksaveasfilename(
+            title=title,
+            defaultextension=".xlsx",
+            filetypes=[("Excel文件", "*.xlsx"), ("所有文件", "*.*")],
+            initialfile=default_name
+        )
+        return output_path if output_path else None
+    
+    @staticmethod
+    def parse_date_value(date_value):
+        """解析日期值，支持多种格式"""
+        if not date_value:
+            return None
             
-        Returns:
-            tuple: (数据框, 工作簿对象)
-        """
-        # 使用pandas读取数据
-        df = pd.read_excel(file_path)
-        
-        # 使用openpyxl读取格式
-        workbook = load_workbook(file_path)
-        
-        return df, workbook
+        try:
+            # 尝试pandas的日期解析
+            return pd.to_datetime(date_value).date()
+        except:
+            # 如果pandas解析失败，尝试手动解析
+            if isinstance(date_value, str):
+                for fmt in ['%Y-%m-%d', '%Y/%m/%d', '%Y年%m月%d日', '%m-%d-%Y', '%d/%m/%Y']:
+                    try:
+                        return datetime.strptime(str(date_value).strip(), fmt).date()
+                    except ValueError:
+                        continue
+        return None
     
     @staticmethod
-    def write_excel_with_format(df, file_path, template_workbook=None):
-        """
-        写入Excel文件并应用格式
+    def create_ui_frame(parent, title, subtitle):
+        """创建统一的UI标题框架"""
+        title_frame = tk.Frame(parent, bg='#f5f8ff')
+        title_frame.pack(fill=tk.X, pady=(0, 15))
         
-        Args:
-            df: 数据框
-            file_path: 输出文件路径
-            template_workbook: 模板工作簿（可选）
-        """
-        # 使用pandas写入数据
-        df.to_excel(file_path, index=False)
+        title_label = tk.Label(title_frame, text=title, 
+                             font=("微软雅黑", 18, "bold"), bg='#f5f8ff', fg='#2c7be5')
+        title_label.pack()
         
-        if template_workbook:
-            # 应用模板格式
-            ExcelUtils.apply_format_from_template(file_path, template_workbook)
+        subtitle_label = tk.Label(title_frame, text=subtitle, 
+                                font=("微软雅黑", 12), bg='#f5f8ff', fg='#6c757d')
+        subtitle_label.pack()
+        
+        return title_frame
     
     @staticmethod
-    def apply_format_from_template(output_file, template_workbook):
-        """
-        从模板应用格式到输出文件
+    def create_file_selection_frame(parent, label_text="Excel文件:", var=None):
+        """创建文件选择框架"""
+        file_frame = ttk.LabelFrame(parent, text="📁 选择Excel文件", padding=15)
+        file_frame.pack(fill=tk.X, pady=(0, 15))
         
-        Args:
-            output_file: 输出文件路径
-            template_workbook: 模板工作簿
-        """
-        # 打开输出文件
-        output_wb = load_workbook(output_file)
-        output_ws = output_wb.active
+        tk.Label(file_frame, text=label_text, font=("微软雅黑", 10)).pack(side=tk.LEFT)
         
-        # 获取模板工作表的格式
-        template_ws = template_workbook.active
+        if var is None:
+            var = tk.StringVar()
         
-        # 复制列宽
-        for col in range(1, template_ws.max_column + 1):
-            col_letter = get_column_letter(col)
-            output_ws.column_dimensions[col_letter].width = template_ws.column_dimensions[col_letter].width
+        entry_file = ttk.Entry(file_frame, textvariable=var, width=50)
+        entry_file.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(10, 10))
         
-        # 复制行高
-        for row in range(1, template_ws.max_row + 1):
-            output_ws.row_dimensions[row].height = template_ws.row_dimensions[row].height
-        
-        # 保存修改
-        output_wb.save(output_file)
+        return file_frame, var
     
     @staticmethod
-    def detect_date_columns(df):
-        """
-        检测数据框中的日期列
-        
-        Args:
-            df: 数据框
-            
-        Returns:
-            list: 日期列名列表
-        """
-        date_columns = []
-        
-        for col in df.columns:
-            # 检查列名是否包含日期相关关键词
-            col_str = str(col).lower()
-            if any(keyword in col_str for keyword in ['date', '时间', '日期', 'day', 'month', 'year']):
-                date_columns.append(col)
-                continue
-            
-            # 检查列数据是否包含日期值
-            try:
-                sample_data = df[col].dropna().head(10)
-                if len(sample_data) > 0:
-                    # 尝试转换为日期
-                    pd.to_datetime(sample_data, errors='coerce')
-                    # 如果成功转换的数量超过一半，认为是日期列
-                    if len(sample_data) >= 5:
-                        date_columns.append(col)
-            except:
-                pass
-        
-        return date_columns
-    
-    @staticmethod
-    def format_excel_file(file_path):
-        """
-        格式化Excel文件
-        
-        Args:
-            file_path: Excel文件路径
-        """
-        workbook = load_workbook(file_path)
-        worksheet = workbook.active
-        
-        # 设置默认字体
-        default_font = Font(name='微软雅黑', size=11)
-        
-        # 设置表头样式
-        header_fill = PatternFill(start_color='DDEBF7', end_color='DDEBF7', fill_type='solid')
-        header_font = Font(name='微软雅黑', size=11, bold=True)
-        header_alignment = Alignment(horizontal='center', vertical='center')
-        
-        # 设置边框
-        thin_border = Border(left=Side(style='thin'), 
-                            right=Side(style='thin'), 
-                            top=Side(style='thin'), 
-                            bottom=Side(style='thin'))
-        
-        # 应用表头样式
-        for cell in worksheet[1]:
-            cell.font = header_font
-            cell.fill = header_fill
-            cell.alignment = header_alignment
-            cell.border = thin_border
-        
-        # 应用数据行样式
-        for row in worksheet.iter_rows(min_row=2):
-            for cell in row:
-                cell.font = default_font
-                cell.border = thin_border
-        
-        # 自动调整列宽
-        for column in worksheet.columns:
-            max_length = 0
-            column_letter = get_column_letter(column[0].column)
-            
-            for cell in column:
-                try:
-                    if len(str(cell.value)) > max_length:
-                        max_length = len(str(cell.value))
-                except:
-                    pass
-            
-            adjusted_width = min(max_length + 2, 50)  # 限制最大宽度
-            worksheet.column_dimensions[column_letter].width = adjusted_width
-        
-        # 保存修改
-        workbook.save(file_path)
-    
-    @staticmethod
-    def merge_excel_files(file_list, output_file):
-        """
-        合并多个Excel文件
-        
-        Args:
-            file_list: 文件路径列表
-            output_file: 输出文件路径
-        """
-        merged_df = pd.DataFrame()
-        
-        for file_path in file_list:
-            try:
-                df = pd.read_excel(file_path)
-                merged_df = pd.concat([merged_df, df], ignore_index=True)
-            except Exception as e:
-                print(f"读取文件 {file_path} 失败: {e}")
-        
-        merged_df.to_excel(output_file, index=False)
-        ExcelUtils.format_excel_file(output_file)
-    
-    @staticmethod
-    def split_excel_by_column(file_path, split_column, output_dir):
-        """
-        按列值拆分Excel文件
-        
-        Args:
-            file_path: 输入文件路径
-            split_column: 拆分列名
-            output_dir: 输出目录
-        """
-        df = pd.read_excel(file_path)
-        
-        if split_column not in df.columns:
-            raise ValueError(f"列 '{split_column}' 不存在于文件中")
-        
-        # 创建输出目录
-        os.makedirs(output_dir, exist_ok=True)
-        
-        # 按列值分组
-        grouped = df.groupby(split_column)
-        
-        for value, group_df in grouped:
-            # 生成安全的文件名
-            safe_value = str(value).replace('/', '_').replace('\\', '_').replace(':', '_')
-            output_file = os.path.join(output_dir, f"{safe_value}.xlsx")
-            
-            group_df.to_excel(output_file, index=False)
-            ExcelUtils.format_excel_file(output_file)
+    def add_status_message(status_text, msg, is_error=False):
+        """添加状态消息到文本框"""
+        status_text.insert(tk.END, f"{msg}\n")
+        if is_error:
+            status_text.tag_add("error", "end-2l", "end-1l")
+            status_text.tag_config("error", foreground="red")
+        status_text.see(tk.END)
 
 
-# 日期格式常量
-DATE_FORMATS = [
-    "%Y-%m-%d",      # 2023-10-15
-    "%Y/%m/%d",      # 2023/10/15
-    "%Y年%m月%d日",  # 2023年10月15日
-    "%m/%d/%Y",      # 10/15/2023
-    "%d/%m/%Y",      # 15/10/2023
-    "%Y%m%d",        # 20231015
-]
-
-
-if __name__ == "__main__":
-    # 测试代码
-    print("Excel工具函数库测试")
-    
-    # 创建一个测试数据框
-    test_data = {
-        '日期': ['2023-10-15', '2023-10-16', '2023-10-17'],
-        '姓名': ['张三', '李四', '王五'],
-        '金额': [100, 200, 150]
-    }
-    
-    df = pd.DataFrame(test_data)
-    print("测试数据框:")
-    print(df)
-    
-    # 测试日期列检测
-    date_cols = ExcelUtils.detect_date_columns(df)
-    print(f"检测到的日期列: {date_cols}")
+# 日期格式选项常量
+DATE_FORMATS = ["YYYY-MM-DD", "YYYY/MM/DD", "YYYY年MM月DD日", "MM-DD-YYYY", "DD/MM/YYYY"]
